@@ -1,26 +1,157 @@
-import ifcopenshell, os, json, shutil
+import ifcopenshell
 import ifcopenshell.geom
+import os
+import json
+import shutil
 import numpy as np
 from collections import deque, defaultdict
 
-import data.objects
-import data.raw_ifc
-import data.raw_ifc.projects
-import data.raw_ifc.expanded_projects
-import data.converted_data
-import data.converted_data.graph
+import m01_Config_Files
+import m02_Data_Files.d01_Raw_IFC
+import m02_Data_Files.d01_Raw_IFC.d01_Expanded
+import m02_Data_Files.d02_Object_Files
+import m02_Data_Files.d05_Graph.json
 
-def get_geometry(beam, settings):
-    shape = ifcopenshell.geom.create_shape(settings, beam)
+def Delete_files(folder_path, file_type):
+    """
+    elete all files of a type in a folder.
+    """
+    for filename in os.listdir(folder_path):
+        if filename.lower().endswith(file_type):
+            target_file_path = os.path.join(folder_path, filename)
+            os.remove(target_file_path)
+            print(f"File Deleted: {target_file_path}")
+
+def IFC_file_expand(filename, copies):
+    """
+    Copy and rename IFC files.
+    """
+    Raw_IFC_dir = os.path.dirname(m02_Data_Files.d01_Raw_IFC.__file__)
+    Raw_IFC_file_path = os.path.join(Raw_IFC_dir, filename)
+    Expanded_IFC_dir = os.path.dirname(m02_Data_Files.d01_Raw_IFC.d01_Expanded.__file__)
+    File_base, File_ext = os.path.splitext(filename)
+    for i in range(1, copies + 1):
+        Target_file_name = f"{File_base}_copy{i}{File_ext}"
+        Target_file_path = os.path.join(Expanded_IFC_dir, Target_file_name)
+        shutil.copy(Raw_IFC_file_path, Target_file_path)
+        print(f"IFC Expansion: {Target_file_path} Created")
+
+def Regenerate_global_ids(filename):
+    """
+    Generate new uids for all IFC elements.
+    """
+    IFC_dir = os.path.dirname(m02_Data_Files.d01_Raw_IFC.d01_Expanded.__file__)
+    IFC_file_path = os.path.join(IFC_dir,filename)
+    IFC_file = ifcopenshell.open(IFC_file_path)
+    for entity in IFC_file.by_type("IfcRoot"):
+        entity.GlobalId = ifcopenshell.guid.new()
+    IFC_file.write(IFC_file_path) 
+    print(f"New uid for {IFC_file_path} generated")
+
+def Export_windows_and_doors(element, index, settings):
+    """
+    Replace windows and doors to a box and export as .obj.
+    """
+    Split=False
+    Segments = None
+    Vertices = []
+    Triangles = []
+    IFC_class = element.is_a()
+    Vertex_offset = 0  
+    try:
+        shape = ifcopenshell.geom.create_shape(settings, element)
+        verts = np.array(shape.geometry.verts).reshape(-1, 3)
+        placement_matrix = np.array(shape.transformation.matrix).reshape(4, 4).T
+        verts_homogeneous = np.hstack([verts, np.ones((verts.shape[0], 1))])
+        local_verts = (np.linalg.inv(placement_matrix) @ verts_homogeneous.T).T[:, :3]
+        min_local = local_verts.min(axis=0)
+        max_local = local_verts.max(axis=0)
+        bbox_local_vertices = np.array([
+            [min_local[0], min_local[1], min_local[2]],
+            [max_local[0], min_local[1], min_local[2]],
+            [max_local[0], max_local[1], min_local[2]],
+            [min_local[0], max_local[1], min_local[2]],
+            [min_local[0], min_local[1], max_local[2]],
+            [max_local[0], min_local[1], max_local[2]],
+            [max_local[0], max_local[1], max_local[2]],
+            [min_local[0], max_local[1], max_local[2]],
+        ])
+        bbox_local_vertices_h = np.hstack([bbox_local_vertices, np.ones((8, 1))])
+        bbox_world_vertices = (placement_matrix @ bbox_local_vertices_h.T).T[:, :3]
+        Vertices.extend(bbox_world_vertices)
+        quad_faces = [
+            [0, 1, 2, 3],  
+            [4, 5, 6, 7],  
+            [0, 1, 5, 4],  
+            [1, 2, 6, 5],  
+            [2, 3, 7, 6],  
+            [3, 0, 4, 7],  
+        ]
+        # Split faces to triangles.
+        for quad in quad_faces:
+            idx0, idx1, idx2, idx3 = [Vertex_offset + i for i in quad]
+            Triangles.append([idx0, idx1, idx2])
+            Triangles.append([idx0, idx2, idx3])
+        Vertex_offset += 8
+    except Exception as e:
+        print(f"Error with {element.GlobalId} info: {e}")
+    return Vertices, Triangles, element.GlobalId, IFC_class, index, Split, Segments
+
+def Export_general_elements(element, index, settings):
+    """
+    Export verts and faces for general elements, if an elements has separate parts, export separately.
+    """
+    IFC_class = element.is_a()
+    Vertices, Triangles = Get_geometry(element, settings)
+    face_graph = Build_face_graph(Triangles)
+    Segments = Find_connected_components(Triangles, face_graph)
+    if len(Segments) > 1:
+        print(f"Element {element.GlobalId} has {len(Segments)} separate parts.")
+        Split = True
+    else:
+        Segments = None
+    return Vertices, Triangles, element.GlobalId, IFC_class, index, Split, Segments
+
+def IFC_to_obj(IFC_file, IFC_classes, index, settings):
+    """
+    Export IFC elements to .obj files.
+    """
+    # Doors and windows are handled in different way.
+    Special_classes = {"IfcWindow", "IfcDoor"}
+    Window_and_door_elements = []
+    General_elements = []
+
+    # Extracting elements
+    for class_name in IFC_classes:
+        elements = IFC_file.by_type(class_name)
+        if class_name in Special_classes:
+            Window_and_door_elements += elements
+        else:
+            General_elements += elements
+
+    # Process windows and doors
+    for element in Window_and_door_elements:
+        Write_to_obj(Export_windows_and_doors(element, index, settings))
+    # Process other elements.
+    for element in General_elements:
+        Write_to_obj(Export_general_elements(element, index, settings))
+
+def Get_geometry(element, settings):
+    """
+    Get verts and faces of general elements.
+    """
+    shape = ifcopenshell.geom.create_shape(settings, element)
     verts = np.array(shape.geometry.verts).reshape(-1, 3)  # 3D 坐标
     faces = np.array(shape.geometry.faces).reshape(-1, 3)  # 三角形索引
     return verts, faces
 
-def build_face_graph(faces):
+def Build_face_graph(faces):
+    """
+    Generate a graph of faces to determine separate elements.
+    """
     edge_to_faces = defaultdict(set)
     face_graph = defaultdict(set)
     for i, face in enumerate(faces):
-        # 使用无序对表示边，确保 (a,b) 和 (b,a) 视为相同边
         edges = {
             (min(face[0], face[1]), max(face[0], face[1])),
             (min(face[1], face[2]), max(face[1], face[2])),
@@ -36,12 +167,13 @@ def build_face_graph(faces):
                 face_graph[face_list[j]].add(face_list[i])
     return face_graph
 
-def find_connected_components(faces, face_graph):
-    """查找所有独立的连通组件"""
+def Find_connected_components(faces, face_graph):
+    """
+    Identify separate geometry in an element.
+    """
     visited = set()
-    groups = []
+    Segements = []
     def bfs(start_face):
-        """使用 BFS 进行连通性检测"""
         queue = deque([start_face])
         component = set()
         while queue:
@@ -55,189 +187,46 @@ def find_connected_components(faces, face_graph):
     for i in range(len(faces)):
         if i not in visited:
             group = bfs(i)
-            groups.append(group)
-    return groups
+            Segements.append(group)
+    return Segements
 
-def write_obj_file(vertices, faces, uid, ifc_class, index, groups=None, split=False):
-    base_dir = os.path.dirname(data.objects.__file__)
-    index_file = os.path.join(os.path.dirname(data.converted_data.__file__),"project_reference.json")
+def Write_to_obj(vertices, faces, uid, ifc_class, index, split=False, groups=None):
+    Objs_dir = os.path.dirname(m02_Data_Files.d02_Object_Files.__file__)
     if split:
         for split_num, group in enumerate(groups, start=1):
-        # 收集当前组中使用到的所有顶点索引（原始索引）
             used_vertex_indices = set()
             for face_index in group:
                 used_vertex_indices.update(faces[face_index])
-            # 将顶点索引按顺序排列
             used_vertex_indices = sorted(used_vertex_indices)
-            # 构建旧索引到新索引的映射，新索引从1开始
             index_mapping = {old_idx: new_idx for new_idx, old_idx in enumerate(used_vertex_indices, start=1)}
-            # 生成唯一的文件名，包含 beam 的 GlobalId 和分段编号
             file_name = f"{index}_{ifc_class}_{uid}_split_{split_num}"
-            output_file = os.path.join(base_dir, f"{file_name}.obj")
-            
-            info=[]
-            info.append({
-                "project": index,
-                "uid": uid,
-                "ifcclass": ifc_class,
-            })
-            with open(index_file, "a") as f:
-                json.dump(info, f, indent=4)
-
+            output_file = os.path.join(Objs_dir, f"{file_name}.obj")
             with open(output_file, 'w', encoding='utf-8') as f:
                 f.write("# Split OBJ File\n")
-                # 写入仅当前组件使用到的顶点，格式化为 OBJ 文件中的顶点数据（v x y z）
                 for old_idx in used_vertex_indices:
                     vertex = vertices[old_idx]
                     vertex_str = "v " + " ".join(map(str, vertex)) + "\n"
                     f.write(vertex_str)
-                # 写入对象名
                 f.write(f"\no Object_{split_num}\n")
-                # 写入面数据，更新面中的顶点索引为新的索引
                 for face_index in group:
                     remapped = [index_mapping[v] for v in faces[face_index]]
                     f.write("f " + " ".join(str(idx) for idx in remapped) + "\n")
             print(f"Element {uid}: Split {split_num} saved to {output_file}")
     else:
         file_name = f"{index}_{ifc_class}_{uid}.obj"
-        output_file = os.path.join(base_dir, file_name)
-
-        info=[]
-        info.append({
-                "project": index,
-                "uid": uid,
-                "ifcclass": ifc_class,
-            })
-        with open(index_file, "a") as f:
-                json.dump(info, f, indent=4)
-
+        output_file = os.path.join(Objs_dir, file_name)
         with open(output_file, 'w', encoding='utf-8') as f:
             f.write("# OBJ File\n")
-            # 写入所有顶点
             for vertex in vertices:
                 vertex_str = "v " + " ".join(map(str, vertex)) + "\n"
                 f.write(vertex_str)
-            # 写入对象名
             f.write("\no Object\n")
-            # 写入所有面数据
             for face in faces:
                 f.write("f " + " ".join(str(idx + 1) for idx in face) + "\n")
         print(f"Element {uid}: Saved to {output_file}")
 
-def ifc_export_to_obj(ifc_file, settings, cfg, index):
-    #Init 
-    ifc_classes = cfg.get("ifc_classes", [])
-    special_classes = {"IfcWindow", "IfcDoor"}
-    window_and_door_elements = []
-    general_elements = []
-    #Add elements
-    if "IfcWindow" in ifc_classes:
-        window_and_door_elements += ifc_file.by_type("IfcWindow")
-    if "IfcDoor" in ifc_classes:
-        window_and_door_elements += ifc_file.by_type("IfcDoor")
-    for class_name in ifc_classes:
-        if class_name not in special_classes:
-            general_elements += ifc_file.by_type(class_name)
-    #Process windows and doors
-    for element in window_and_door_elements:
-        vertices = []
-        triangles = []
-        vertex_offset = 0  
-        ifc_class = element.is_a()
-        try:
-            shape = ifcopenshell.geom.create_shape(settings, element)
-            verts = np.array(shape.geometry.verts).reshape(-1, 3)
-            placement_matrix = np.array(shape.transformation.matrix).reshape(4, 4).T
-            verts_homogeneous = np.hstack([verts, np.ones((verts.shape[0], 1))])
-            local_verts = (np.linalg.inv(placement_matrix) @ verts_homogeneous.T).T[:, :3]
-            min_local = local_verts.min(axis=0)
-            max_local = local_verts.max(axis=0)
-            bbox_local_vertices = np.array([
-                [min_local[0], min_local[1], min_local[2]],
-                [max_local[0], min_local[1], min_local[2]],
-                [max_local[0], max_local[1], min_local[2]],
-                [min_local[0], max_local[1], min_local[2]],
-                [min_local[0], min_local[1], max_local[2]],
-                [max_local[0], min_local[1], max_local[2]],
-                [max_local[0], max_local[1], max_local[2]],
-                [min_local[0], max_local[1], max_local[2]],
-            ])
-            # 从局部坐标转换到世界坐标
-            bbox_local_vertices_h = np.hstack([bbox_local_vertices, np.ones((8, 1))])
-            bbox_world_vertices = (placement_matrix @ bbox_local_vertices_h.T).T[:, :3]
-            vertices.extend(bbox_world_vertices)
-            quad_faces = [
-                [0, 1, 2, 3],  # 底面
-                [4, 5, 6, 7],  # 顶面
-                [0, 1, 5, 4],  # 前面
-                [1, 2, 6, 5],  # 右面
-                [2, 3, 7, 6],  # 后面
-                [3, 0, 4, 7],  # 左面
-            ]
-            # 将每个四边形面拆分为两个三角面
-            for quad in quad_faces:
-                idx0, idx1, idx2, idx3 = [vertex_offset + i for i in quad]
-                # 三角形1: (idx0, idx1, idx2)
-                triangles.append([idx0, idx1, idx2])
-                # 三角形2: (idx0, idx2, idx3)
-                triangles.append([idx0, idx2, idx3])
-            vertex_offset += 8
-        except Exception as e:
-            print(f"处理元素 {element.GlobalId} 出错：{e}")
-            continue
-        write_obj_file(vertices, triangles, element.GlobalId, ifc_class, index, groups=None, split=False)
 
-    for element in general_elements:
-        ifc_class = element.is_a()
-        verts, faces = get_geometry(element, settings)
-        face_graph = build_face_graph(faces)
-        segments = find_connected_components(faces, face_graph)
-        if len(segments) > 1:
-            print(f"Element {element.GlobalId} has {len(segments)} separate parts.")
-            # 将整个 beam 的 faces 与所有连通组件一起传入，生成多个 OBJ 文件
-            write_obj_file(verts, faces, element.GlobalId, index, segments, split=True)
-        else:
-            #print(f"Element {element.GlobalId} is a single component; no split needed.")
-            write_obj_file(verts, faces, element.GlobalId, ifc_class,index, groups=None, split=False)
-
-def regenerate_global_ids():
-    files_dir = os.path.dirname(data.raw_ifc.expanded_projects.__file__)
-    for file_name in os.listdir(files_dir):
-        if file_name.lower().endswith('.ifc'):
-            file_path = os.path.join(os.path.dirname(data.raw_ifc.expanded_projects.__file__),file_name)
-            ifc_model = ifcopenshell.open(file_path)
-            for entity in ifc_model.by_type("IfcRoot"):
-                entity.GlobalId = ifcopenshell.guid.new()
-            ifc_model.write(file_path) 
-    print("New uid generated")
-
-def ifc_file_expand(cfg):
-    copies = cfg.get("copies")+1
-    source_dir = os.path.dirname(data.raw_ifc.projects.__file__)
-    target_dir = os.path.dirname(data.raw_ifc.expanded_projects.__file__)
-    if os.path.exists(target_dir):
-        for filename in os.listdir(target_dir):
-            if filename == "__init__.py":
-                continue
-            file_path = os.path.join(target_dir, filename)
-            if os.path.isfile(file_path) or os.path.islink(file_path):
-                os.remove(file_path)
-            elif os.path.isdir(file_path):
-                shutil.rmtree(file_path)
-    os.makedirs(target_dir, exist_ok=True)
-    for file_name in os.listdir(source_dir):
-        if file_name.lower().endswith('.ifc'):
-            file_base, file_ext = os.path.splitext(file_name)
-            source_file_path = os.path.join(source_dir, file_name)
-            for i in range(1, copies + 1):
-                new_file_name = f"{file_base}_copy{i}{file_ext}"
-                new_file_path = os.path.join(target_dir, new_file_name)
-                shutil.copy(source_file_path, new_file_path)
-                print(f"{new_file_path} Created")
-
-
-def extract_ifc_graph_json(project_index, ifc_file, output_prefix='ifc_graph'):
-    ifc = ifcopenshell.open(ifc_file)
+def Extract_graph(project_index, ifc, output_prefix='ifc_graph'):
     target_types = ["IfcWall", "IfcWindow", "IfcDoor", "IfcSlab"]
     elements = []
     id_to_index = {}
@@ -278,14 +267,12 @@ def extract_ifc_graph_json(project_index, ifc_file, output_prefix='ifc_graph'):
         wall_index = globalid_to_index[wall.GlobalId]
         graph["edges"].append((slab_index, wall_index))
         all_wall.append(wall_index)
-        # 检查墙体上是否有开口（门窗）
         if hasattr(wall, "HasOpenings"):
             for rel in wall.HasOpenings:
                 opening = rel.RelatedOpeningElement
                 for fill in getattr(opening, "HasFillings", []):
                     filled = fill.RelatedBuildingElement
                     filled_index = globalid_to_index[filled.GlobalId]
-                    # 墙与门/窗建立连接
                     graph["edges"].append((wall_index, filled_index))
                     main_wall.append(wall_index)
     
@@ -295,18 +282,10 @@ def extract_ifc_graph_json(project_index, ifc_file, output_prefix='ifc_graph'):
         for main_index in main_wall:
             graph["edges"].append((side_index, main_index))
         
-    # Save output files in the current working directory
-    out_base_path = os.path.dirname(data.converted_data.graph.__file__)
-    file_name = os.path.join(out_base_path, f"{project_index}:{output_prefix}.json")
+    Output_dir = os.path.dirname(m02_Data_Files.d05_Graph.json.__file__)
+    Output_file_name = os.path.join(Output_dir, f"{project_index}:{output_prefix}.json")
 
-    with open(file_name, "w") as f:
-        #json.dump(list(graph["edges"]), f, indent=2)
+    with open(Output_file_name, "w") as f:
         json.dump(graph, f, indent=2)
 
-def main():
-    path = os.path.join(os.path.dirname(data.raw_ifc.projects.__file__),"1.ifc")
-    extract_ifc_graph_json(1, path)
-
-if __name__=='__main__':
-    main()
 
