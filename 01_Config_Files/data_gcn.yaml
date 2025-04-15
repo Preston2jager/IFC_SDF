@@ -1,0 +1,10 @@
+latent_code_folder: "07_04_161651"
+
+ifc_classes:  
+  - IfcWindow
+  - IfcDoor
+  - IfcColumn
+  - IfcBeam
+  - IfcSlab
+  - IfcRoof
+  - IfcWall
