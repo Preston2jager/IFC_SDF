@@ -1,4 +1,5 @@
 # 忽略所有文件
-02_Data_Files/**/*
+02_Data_Files/**
 # 但保留文件夹
-!02_Data_Files/**/.gitkeep
+!02_Data_Files/
+!02_Data_Files/**/
