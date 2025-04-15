@@ -1,8 +1,0 @@
-# Config file for training GCN model
-tag_dim: 7
-feature_channels: 512
-hidden_channels: 1024
-
-epochs: 5000
-lr_model: 0.00001
-batch_size: 1

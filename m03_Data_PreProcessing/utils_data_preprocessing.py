@@ -1,6 +1,5 @@
 import ifcopenshell, os, json, shutil
 import ifcopenshell.geom
-import ifcopenshell.util.element
 import numpy as np
 from collections import deque, defaultdict
 
