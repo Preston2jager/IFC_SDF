@@ -2,7 +2,7 @@ import ifcopenshell
 import ifcopenshell.api
 import ifcopenshell.geom
 import yaml, os
-from utils.utils_ifc import *
+from utils_ifc import *
 
 import config_files
 import data.raw_ifc.projects

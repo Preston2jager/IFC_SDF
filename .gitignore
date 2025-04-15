@@ -1,2 +1,4 @@
-# 忽略所有文件
-02_Data_Files/
+02_Data_Files/**
+
+!02_Data_Files/**/
+!02_Data_Files/**/__init__.py
