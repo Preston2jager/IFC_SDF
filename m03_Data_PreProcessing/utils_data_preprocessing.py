@@ -1,8 +1,13 @@
 import ifcopenshell
 import ifcopenshell.geom
 import os
+import re
 import json
 import shutil
+import math
+import tempfile
+import random
+
 import numpy as np
 from collections import deque, defaultdict
 
@@ -101,6 +106,7 @@ def Export_general_elements(element, index, settings):
     """
     Export verts and faces for general elements, if an elements has separate parts, export separately.
     """
+    Split = False
     IFC_class = element.is_a()
     Vertices, Triangles = Get_geometry(element, settings)
     face_graph = Build_face_graph(Triangles)
@@ -131,10 +137,12 @@ def IFC_to_obj(IFC_file, IFC_classes, index, settings):
 
     # Process windows and doors
     for element in Window_and_door_elements:
-        Write_to_obj(Export_windows_and_doors(element, index, settings))
+        Vertices, Triangles, element.GlobalId, IFC_class, index, Split, Segments = Export_windows_and_doors(element, index, settings)
+        Write_to_obj(Vertices, Triangles, element.GlobalId, IFC_class, index, Split, Segments)
     # Process other elements.
     for element in General_elements:
-        Write_to_obj(Export_general_elements(element, index, settings))
+        Vertices, Triangles, element.GlobalId, IFC_class, index, Split, Segments = Export_general_elements(element, index, settings)
+        Write_to_obj(Vertices, Triangles, element.GlobalId, IFC_class, index, Split, Segments)
 
 def Get_geometry(element, settings):
     """
@@ -191,6 +199,9 @@ def Find_connected_components(faces, face_graph):
     return Segements
 
 def Write_to_obj(vertices, faces, uid, ifc_class, index, split=False, groups=None):
+    """
+    Export IFC elements as obj, also handle elements with multiple parts.
+    """
     Objs_dir = os.path.dirname(m02_Data_Files.d02_Object_Files.__file__)
     if split:
         for split_num, group in enumerate(groups, start=1):
@@ -225,14 +236,15 @@ def Write_to_obj(vertices, faces, uid, ifc_class, index, split=False, groups=Non
                 f.write("f " + " ".join(str(idx + 1) for idx in face) + "\n")
         print(f"Element {uid}: Saved to {output_file}")
 
-
 def Extract_graph(project_index, ifc, output_prefix='ifc_graph'):
+    """
+    Generate ifc graphs for reference. To 
+    """
     target_types = ["IfcWall", "IfcWindow", "IfcDoor", "IfcSlab"]
     elements = []
     id_to_index = {}
     index_to_info = {}
-    
-    # Extract elements of target types and record their information
+    # Extract elements of target types and record their information.
     for ifc_type in target_types:
         objs = ifc.by_type(ifc_type)
         for obj in objs:
@@ -240,28 +252,22 @@ def Extract_graph(project_index, ifc, output_prefix='ifc_graph'):
             elements.append(obj)
             global_id = obj.GlobalId
             id_to_index[global_id] = index
-            # Use the element index as key so each element's info is stored separately
+            # Use the element index as key so each element's info is stored separately.
             index_to_info[index] = {
-                "Project": project_index,
                 "index": index,
                 "GlobalId": global_id,
                 "type": ifc_type
             }
-            print(f"Relations for {index}:{global_id} ({ifc_type}):")
-
-    # Build the graph structure with nodes and empty edges list
+    # Build the graph structure with nodes and empty edges list.
     graph = {
         "project": project_index,
         "nodes": list(index_to_info.values()),
-        "edges": []  # Placeholder: populate with actual relationships as needed.
+        "edges": []  
     }   
-            
     main_wall = []
     all_wall = []
-
     globalid_to_index = {v["GlobalId"]: k for k, v in index_to_info.items()}
     slab_index = next(idx for idx, info in index_to_info.items() if info["type"] == "IfcSlab")
-
     # Process IfcWall elements and build edges based on relationships
     for wall in ifc.by_type("IfcWall"):
         wall_index = globalid_to_index[wall.GlobalId]
@@ -275,17 +281,100 @@ def Extract_graph(project_index, ifc, output_prefix='ifc_graph'):
                     filled_index = globalid_to_index[filled.GlobalId]
                     graph["edges"].append((wall_index, filled_index))
                     main_wall.append(wall_index)
-    
     side_wall = list(set(all_wall) - set(main_wall))
-
     for side_index in side_wall:
         for main_index in main_wall:
             graph["edges"].append((side_index, main_index))
-        
     Output_dir = os.path.dirname(m02_Data_Files.d05_Graph.json.__file__)
     Output_file_name = os.path.join(Output_dir, f"{project_index}:{output_prefix}.json")
-
     with open(Output_file_name, "w") as f:
         json.dump(graph, f, indent=2)
 
+def Generate_random_transform(cfg):
+    """
+    Generate random rotation and translation coordinates for an OBJ file.
+    """
+    angle = random.uniform(cfg["rotation"]["min"], cfg["rotation"]["max"])
+    tx = random.uniform(cfg["translation"]["x_range"][0], cfg["translation"]["x_range"][1])
+    ty = random.uniform(cfg["translation"]["y_range"][0], cfg["translation"]["y_range"][1])
+    tz = 0
+    return {
+        "rotation_angle": angle,
+        "translation": (tx, ty, tz),
+        "axis": cfg.get("axis", "y")
+    }
 
+def Rotate_vertex(vertex, angle_degrees, axis='y'):
+    """
+    Get rotation coords for vertices.
+    """
+    angle_radians = math.radians(angle_degrees)
+    x, y, z = vertex
+    if axis == 'y':
+        x_new = x * math.cos(angle_radians) + z * math.sin(angle_radians)
+        y_new = y
+        z_new = -x * math.sin(angle_radians) + z * math.cos(angle_radians)
+    elif axis == 'x':
+        x_new = x
+        y_new = y * math.cos(angle_radians) - z * math.sin(angle_radians)
+        z_new = y * math.sin(angle_radians) + z * math.cos(angle_radians)
+    elif axis == 'z':
+        x_new = x * math.cos(angle_radians) - y * math.sin(angle_radians)
+        y_new = x * math.sin(angle_radians) + y * math.cos(angle_radians)
+        z_new = z
+    else:
+        x_new, y_new, z_new = x, y, z
+    return [x_new, y_new, z_new]
+
+def Single_obj_transform(file_path, rotation_angle=0, translation=(0, 0, 0), axis='y'):
+    """
+    Rotate and move a single .obj file.
+    """
+    vertices = []
+    faces = []
+    others = []  
+    with open(file_path, 'r') as f:
+        for line in f:
+            if line.startswith('v '):
+                parts = line.strip().split()
+                vertex = list(map(float, parts[1:4]))
+                vertex = Rotate_vertex(vertex, rotation_angle, axis)
+                vertex = [vertex[i] + translation[i] for i in range(3)]
+                vertices.append(vertex)
+            elif line.startswith('f '):
+                faces.append(line.strip())
+            else:
+                others.append(line.rstrip())
+    with tempfile.NamedTemporaryFile('w', delete=False) as tmp:
+        for v in vertices:
+            tmp.write(f"v {v[0]} {v[1]} {v[2]}\n")
+        for line in others:
+            tmp.write(f"{line}\n")
+        for face in faces:
+            tmp.write(f"{face}\n")
+        temp_path = tmp.name
+    shutil.move(temp_path, file_path)
+
+def Batch_obj_transform(directory, cfg):
+    """
+    Randomly rotate and move all expanded .obj files.
+    Use prefix to identify file from same project model.
+    """
+    prefix_transform_map = {}
+    for filename in os.listdir(directory):
+        match = re.match(r'^(\d+)_.*\.obj$', filename, re.IGNORECASE)
+        if match:
+            prefix = match.group(1)
+            if prefix not in prefix_transform_map:
+                prefix_transform_map[prefix] = Generate_random_transform(cfg)
+            params = prefix_transform_map[prefix]
+            file_path = os.path.join(directory, filename)
+            Single_obj_transform(
+                file_path,
+                rotation_angle=params["rotation_angle"],
+                translation=params["translation"],
+                axis=params["axis"]
+            )
+            print(f"{filename} Transformed")
+        else:
+            print(f"[!] Skipped {filename}")

@@ -10,8 +10,6 @@ import m02_Data_Files.d01_Raw_IFC.d01_Expanded
 import m02_Data_Files.d02_Object_Files
 import m02_Data_Files.d05_Graph.json
 
-import utils.utils_obj as object_randomise
-
 def main(cfg):
 
     # Extracting objects from IFC files
@@ -40,11 +38,12 @@ def main(cfg):
         for filename in os.listdir(IFC_folder_path):
             if filename.lower().endswith('.ifc'):
                 IFC_file_expand(filename, Num_of_copy)
+        
 
     # Generate new global id for all files
     for filename in os.listdir(Expanded_ifc_folder_path):
         if filename.lower().endswith('.ifc'):
-            Regenerate_global_ids()
+            Regenerate_global_ids(filename)
     
     # Export IFCs to .obj files 
     index = 1
@@ -58,10 +57,10 @@ def main(cfg):
             IFC_to_obj(IFC_file, IFC_classes, index, settings) 
             Extract_graph(index, IFC_file)
             index += 1
-    if cfg.get("data_expand"):
-        object_randomise.main(cfg)
 
-
+    # Randomlise expanded .obj files 
+    Batch_obj_transform(Object_folder_path,cfg)
+        
 if __name__=='__main__':
     cfg_path = os.path.join(os.path.dirname(m01_Config_Files.__file__), 'extracting.yaml')
     with open(cfg_path, 'rb') as f:
