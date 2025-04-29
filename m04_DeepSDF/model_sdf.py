@@ -3,7 +3,7 @@ import torch
 import copy
 from tqdm import tqdm
 from utils import utils_deepsdf
-import numpy as np
+
 """
 Model based on the paper 'DeepSDF'. 
 """

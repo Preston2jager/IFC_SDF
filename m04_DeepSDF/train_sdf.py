@@ -1,19 +1,24 @@
-import torch, os, time, yaml
+import torch
+import os
+import time
+import yaml
+
 from torch.utils.tensorboard import SummaryWriter
 import torch.optim as optim
 from torch.utils.data import random_split
 from torch.utils.data import DataLoader
 from datetime import datetime
 import numpy as np
+from tqdm import tqdm
 
 from utils.utils_deepsdf import SDFLoss_multishape_full_exp
 from utils import utils_deepsdf
 
-import model.model_sdf as sdf_model
-import utils.dataset_sdf as dataset
-import data.converted_data
-import results.runs_sdf as runs
-import config_files
+import model_sdf as sdf_model
+import dataset_sdf as dataset
+import m01_Config_Files
+import m02_Data_Files.d03_SDF_Converted
+import m02_Data_Files.d04_SDF_Results.runs_sdf as runs
 
 # Select device. The 'mps' device (macOS M1 architecture) is not supported as it cannot currently handle weith normalisation. 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
@@ -23,64 +28,64 @@ torch.cuda.empty_cache()
 
 class Trainer():
     def __init__(self, train_cfg):
+        # Directories and paths
         self.train_cfg = train_cfg
-
-    def __call__(self):
-        # directories
         self.timestamp_run = datetime.now().strftime('%d_%m_%H%M%S')   # timestamp to use for logging data
         self.runs_dir = os.path.dirname(runs.__file__)               # directory fo all runs
         self.run_dir = os.path.join(self.runs_dir, self.timestamp_run)  # directory for this run
-        if not os.path.exists(self.run_dir):
-            os.makedirs(self.run_dir)
+        os.makedirs(self.run_dir, exist_ok=True)
 
-        original_idx_str2int_path = os.path.join(os.path.dirname(data.converted_data.__file__), 'idx_str2int_dict.npy')
-        save_idx_str2int_path = os.path.join(self.run_dir, 'idx_str2int_dict.npy')
-        original_idx_int2str_path = os.path.join(os.path.dirname(data.converted_data.__file__), 'idx_int2str_dict.npy')
-        save_idx_int2str_path = os.path.join(self.run_dir, 'idx_int2str_dict.npy')
-
-        if os.path.exists(original_idx_str2int_path):
-            idx_str2int_dict = np.load(original_idx_str2int_path, allow_pickle=True).item()
-            idx_int2str_dict = np.load(original_idx_int2str_path, allow_pickle=True).item()
-            np.save(save_idx_str2int_path, idx_str2int_dict)
-            np.save(save_idx_int2str_path, idx_int2str_dict)
-            print(f'Saved idx_str2int_dict to {save_idx_str2int_path}')
-            print(f'Saved idx_int2str_dict to {save_idx_int2str_path}')
+        # Copy index files
+        Source_idx_str2int_path = os.path.join(os.path.dirname(m02_Data_Files.d03_SDF_Converted.__file__), 'idx_str2int_dict.npy')
+        Target_idx_str2int_path = os.path.join(self.run_dir, 'idx_str2int_dict.npy')
+        if os.path.exists(Source_idx_str2int_path):
+            idx_str2int_dict = np.load(Source_idx_str2int_path, allow_pickle=True).item()
+            np.save(Target_idx_str2int_path, idx_str2int_dict)
+            print(f'Saved idx_str2int_dict to {Target_idx_str2int_path}')
         else:
-            print(f'Warning: {original_idx_str2int_path} not found! idx_str2int_dict not saved.')
-        
+            print(f'Warning: {Source_idx_str2int_path} not found! idx_str2int_dict not saved.')
+
+        Source_idx_int2str_path = os.path.join(os.path.dirname(m02_Data_Files.d03_SDF_Converted.__file__), 'idx_int2str_dict.npy')
+        Target_idx_int2str_path = os.path.join(self.run_dir, 'idx_int2str_dict.npy')
+        if os.path.exists(Source_idx_int2str_path):
+            idx_int2str_dict = np.load(Source_idx_int2str_path, allow_pickle=True).item()
+            np.save(Target_idx_int2str_path, idx_int2str_dict)
+            print(f'Saved idx_int2str_dict to {Target_idx_int2str_path}')
+        else:
+            print(f'Warning: {Source_idx_int2str_path} not found! idx_str2int_dict not saved.')
+
         # Logging
         self.writer = SummaryWriter(log_dir=self.run_dir)
         self.log_path = os.path.join(self.run_dir, 'settings.yaml')
         with open(self.log_path, 'w') as f:
             yaml.dump(self.train_cfg, f)
 
-        # calculate num objects in samples_dictionary, wich is the number of keys
-        samples_dict_path = os.path.join(os.path.dirname(data.converted_data.__file__), f'samples_dict.npy')
-        samples_dict = np.load(samples_dict_path, allow_pickle=True).item()
-
-        # instantiate model and optimisers
+        # Instantiate model and optimisers
         self.model = sdf_model.SDFModel(
                 self.train_cfg['num_layers'], 
                 self.train_cfg['skip_connections'], 
                 inner_dim=self.train_cfg['inner_dim'],
                 latent_size=self.train_cfg['latent_size']
             ).float().to(device)
-
-        # define optimisers
-        self.optimizer_model = optim.Adam(self.model.parameters(), lr=self.train_cfg['lr_model'], weight_decay=0)
         
+        # Define optimisers
+        self.optimizer_model = optim.Adam(self.model.parameters(), lr=self.train_cfg['lr_model'], weight_decay=0)
+
+        # Calculate num objects in samples_dictionary, wich is the number of keys
+        samples_dict_path = os.path.join(os.path.dirname(m02_Data_Files.d03_SDF_Converted.__file__), f'samples_dict.npy')
+        samples_dict = np.load(samples_dict_path, allow_pickle=True).item()
+
         # generate a unique random latent code for each shape
         self.latent_codes = utils_deepsdf.generate_latent_codes(self.train_cfg['latent_size'], samples_dict)
         self.optimizer_latent = optim.Adam([self.latent_codes], lr=self.train_cfg['lr_latent'], weight_decay=0)
-        
+
+
         # Load pretrained weights and optimisers to continue training
         if self.train_cfg['pretrained']:
             # load pretrained weights
             self.model.load_state_dict(torch.load(self.train_cfg['pretrain_weights'], map_location=device))
-
             # load pretrained optimisers
             self.optimizer_model.load_state_dict(torch.load(self.train_cfg['pretrain_optim_model'], map_location=device))
-
             # retrieve latent codes from results.npy file
             results_path = self.train_cfg['pretrain_optim_model'].split(os.sep)
             results_path[-1] = 'results.npy'
@@ -94,7 +99,9 @@ class Trainer():
         if self.train_cfg['lr_scheduler']:
             self.scheduler_model =  torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer_model, mode='min', factor=self.train_cfg['lr_multiplier'], patience=self.train_cfg['patience'], threshold=0.0001, threshold_mode='rel')
             self.scheduler_latent =  torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer_latent, mode='min', factor=self.train_cfg['lr_multiplier'], patience=self.train_cfg['patience'], threshold=0.0001, threshold_mode='rel')
-            
+
+    def __call__(self):
+
         # get data
         train_loader, val_loader = self.get_loaders()
         self.results = {
@@ -106,11 +113,10 @@ class Trainer():
         for epoch in range(self.train_cfg['epochs']):
             print(f'============================ Epoch {epoch} ============================')
             self.epoch = epoch
-
             avg_train_loss = self.train(train_loader)
-
             with torch.no_grad():
                 avg_val_loss = self.validate(val_loader)
+                epoch_end = time.time()
 
                 if avg_val_loss < best_loss:
                     best_loss = np.copy(avg_val_loss)
@@ -128,7 +134,6 @@ class Trainer():
                 if self.train_cfg['lr_scheduler']:
                     self.scheduler_model.step(avg_val_loss)
                     self.scheduler_latent.step(avg_val_loss)
-
                     self.writer.add_scalar('Learning rate (model)', self.scheduler_model._last_lr[0], epoch)
                     self.writer.add_scalar('Learning rate (latent)', self.scheduler_latent._last_lr[0], epoch)            
             
@@ -174,13 +179,13 @@ class Trainer():
             - latent_batch_codes: all latent codes per sample, shape (batch_size, latent_size)
         Return ground truth as y, and the latent codes for this batch.
         """
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        batch[0] = batch[0].to(device)  
-        batch[1] = batch[1].to(device)    
+        batch[0] = batch[0].to(device,non_blocking=True)  
+        batch[1] = batch[1].to(device,non_blocking=True)  
 
         latent_classes_batch = batch[0][:, 0].view(-1, 1).to(torch.long)              
-        coords = batch[0][:, 1:]                                  
-        latent_codes_batch = self.latent_codes[latent_classes_batch.view(-1)]    
+        coords = batch[0][:, 1:]       
+      
+        latent_codes_batch = self.latent_codes[latent_classes_batch.view(-1)]         
 
         x = torch.hstack((latent_codes_batch, coords))                 
         y = batch[1]     # (batch_size, 1)
@@ -191,8 +196,11 @@ class Trainer():
         total_loss = 0.0
         iterations = 0.0
         self.model.train()
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        for batch in train_loader:
+
+        #for batch in train_loader:
+        for batch_idx, batch in enumerate(tqdm(train_loader, desc="Training")):
+            start_time = time.perf_counter()
+
             iterations += 1.0
             self.optimizer_model.zero_grad()
             self.optimizer_latent.zero_grad()
@@ -217,6 +225,9 @@ class Trainer():
             self.optimizer_model.step()
             total_loss += loss_value.data.cpu().numpy()  
 
+            end_time = time.perf_counter()
+            batch_time = end_time - start_time
+            #tqdm.write(f"[Batch {batch_idx}] Time: {batch_time:.4f}s")
             
         avg_train_loss = total_loss/iterations
         print(f'Training: loss {avg_train_loss}')
@@ -262,7 +273,7 @@ class Trainer():
         return avg_val_loss
 
 if __name__=='__main__':
-    train_cfg_path = os.path.join(os.path.dirname(config_files.__file__), 'train_sdf.yaml')
+    train_cfg_path = os.path.join(os.path.dirname(m01_Config_Files.__file__), 'training.yaml')
     with open(train_cfg_path, 'rb') as f:
         train_cfg = yaml.load(f, Loader=yaml.FullLoader)
     trainer = Trainer(train_cfg)

@@ -8,8 +8,8 @@ ifc_classes:
   - IfcRoof
   - IfcWall
 
-data_expand: Ture
-copies: 10
+data_expand: True
+copies: 1
 
 rotation:
   min: 0      # 最小旋转角度
