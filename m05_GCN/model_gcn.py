@@ -10,9 +10,9 @@ class GCN(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.train_cfg = config
-        in_channels = config['feature_channels'] + config['tag_dim']
-        out_channels = config['feature_channels']
-        hidden_channels = config['hidden_channels']
+        in_channels = config['GCN_feature_channels'] + config['GCN_tag_dim']
+        out_channels = config['GCN_feature_channels']
+        hidden_channels = config['GCN_hidden_channels']
         self.dropout = config.get('dropout', 0.5)
         self.conv1 = GraphConv(in_channels, hidden_channels)
         self.conv2 = GraphConv(hidden_channels, hidden_channels)
@@ -20,7 +20,6 @@ class GCN(nn.Module):
         self.reset_parameters()
 
     def reset_parameters(self):
-        # DGL 的 GraphConv 没有 reset_parameters 接口，如果需要，可以手动初始化
         for layer in [self.conv1, self.conv2, self.conv3]:
             if hasattr(layer, 'weight'):
                 nn.init.xavier_uniform_(layer.weight)
@@ -34,7 +33,6 @@ class GCN(nn.Module):
         x = self.conv2(g, x)
         x = F.relu(x)
 
-        # 最后一层输出节点维度 = out_dim
         x = F.dropout(x, p=self.dropout, training=self.training)
         x = self.conv3(g, x)
 

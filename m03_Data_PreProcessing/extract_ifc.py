@@ -3,6 +3,7 @@ import yaml
 import os
 
 from utils_data_preprocessing import *
+from ifc_to_graph import ifc_to_graph
 
 import m01_Config_Files
 import m02_Data_Files.d01_Raw_IFC
@@ -58,7 +59,7 @@ def main(cfg):
             IFC_file_path = os.path.join(Expanded_ifc_folder_path, filename)
             IFC_file = ifcopenshell.open(IFC_file_path)
             IFC_to_obj(IFC_file, IFC_classes, index, settings) 
-            Extract_graph(index, IFC_file)
+            ifc_to_graph(index, IFC_file)
             index += 1
 
     # Randomlise expanded .obj files 

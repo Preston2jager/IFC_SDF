@@ -4,7 +4,8 @@ import shutil
 import json
 import numpy as np
 
-import m02_Data_Files.d06_SDF_selected
+import m01_Config_Files
+import m02_Data_Files.d06_SDF_Ready
 import m02_Data_Files.d04_SDF_Results.runs_sdf
 import m02_Data_Files.d05_Graph
 
@@ -51,8 +52,8 @@ def copy_files_from_folder(folder_path, target_dir):
             print(f"Copyed：{source_file}")
 
 def generate_graph():
-    base_path = os.path.dirname(m02_Data_Files.d06_SDF_selected.__file__)
-    graph_path = os.path.dirname(m02_Data_Files.d05_Graph.__file__)
+    base_path = os.path.dirname(m02_Data_Files.d06_SDF_Ready.__file__)
+    #graph_path = os.path.dirname(m02_Data_Files.d05_Graph.__file__)
     idx_file = os.path.join(base_path, "idx_int2str_dict.npy")
     latent_file = os.path.join(base_path, "results.npy") 
 
@@ -74,9 +75,9 @@ def generate_graph():
             else:
                 print(f"[警告] 解析失败 {full_name}")
 
-    for filename in os.listdir(graph_path):
+    for filename in os.listdir(base_path):
         if filename.endswith(".json"):
-            filepath = os.path.join(graph_path, filename)
+            filepath = os.path.join(base_path, filename)
 
             with open(filepath, "r") as f:
                 data = json.load(f)
@@ -107,23 +108,25 @@ def Delete_files(folder_path, file_type):
             print(f"File Deleted: {target_file_path}")
 
 def main():
-    SDF_folder_path = os.path.dirname(m02_Data_Files.d06_SDF_selected.__file__)
+
+    Config_folder_path = os.path.dirname(m01_Config_Files.__file__)
+    SDF_folder_path = os.path.dirname(m02_Data_Files.d06_SDF_Ready.__file__)
     Results_folder_path = os.path.dirname(m02_Data_Files.d04_SDF_Results.runs_sdf.__file__)
     Graph_folder_path = os.path.dirname(m02_Data_Files.d05_Graph.__file__)
+
     file_types=[".pt",".0",".npy",".yaml",".json"]
     for type in file_types:
         Delete_files(SDF_folder_path, type)
     print("Old files deleted")
+
     nearest_folder = find_nearest_folder(Results_folder_path)
     if nearest_folder:
         print(f"Use：{nearest_folder}")
         copy_files_from_folder(nearest_folder, SDF_folder_path)
-        #copy_files_from_folder(Graph_folder_path, SDF_folder_path)
-    generate_graph()
+        copy_files_from_folder(Graph_folder_path, SDF_folder_path)
+        generate_graph()
+        copy_files_from_folder(Config_folder_path, SDF_folder_path)
 
 if __name__=='__main__':
     main()
-    #cfg_path = os.path.join(os.path.dirname(m01_Config_Files.__file__), 'extracting.yaml')
-    #with open(cfg_path, 'rb') as f:
-        #cfg = yaml.load(f, Loader=yaml.FullLoader)
-    #main(cfg)
+

@@ -20,10 +20,7 @@ import m01_Config_Files
 import m02_Data_Files.d03_SDF_Converted
 import m02_Data_Files.d04_SDF_Results.runs_sdf as runs
 
-# Select device. The 'mps' device (macOS M1 architecture) is not supported as it cannot currently handle weith normalisation. 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-print(f'Device: {device}')
-
 torch.cuda.empty_cache()
 
 class Trainer():
@@ -78,7 +75,6 @@ class Trainer():
         # generate a unique random latent code for each shape
         self.latent_codes = utils_deepsdf.generate_latent_codes(self.train_cfg['latent_size'], samples_dict)
         self.optimizer_latent = optim.Adam([self.latent_codes], lr=self.train_cfg['lr_latent'], weight_decay=0)
-
 
         # Load pretrained weights and optimisers to continue training
         if self.train_cfg['pretrained']:

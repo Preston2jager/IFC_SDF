@@ -1,37 +1,49 @@
-import os, json, torch, dgl, yaml
+import os
+import json
+import torch
+import dgl
+import yaml
 
 from dgl.data import DGLDataset
 
-import graph.json
-import config_files
+import m02_Data_Files.d06_SDF_Ready
+import m02_Data_Files.d08_Forecast_Data
 
 class GCNDataset(DGLDataset):
 
     def __init__(self):
-
         super().__init__(name='my_gcn_dataset')
+  
+    def __getitem__(self, idx):
+        return self.graphs[idx]
 
-        data_cfg_path = os.path.join(os.path.dirname(config_files.__file__), 'data_gcn.yaml')
-        with open(data_cfg_path, 'rb') as f:
+    def __len__(self):
+        return len(self.graphs)
+    
+    def load_data(self, graph_folder, cfg_folder):
+        """
+        Load json data and construct into dgl graph data.
+        """
+        # Loading yaml to get ifcclass
+        ifc_cfg_file = os.path.join(cfg_folder, 'extracting.yaml')
+        
+        with open(ifc_cfg_file, 'rb') as f:
             data_cfg = yaml.load(f, Loader=yaml.FullLoader)
-
         ifc_classes = data_cfg['ifc_classes']
         type_to_idx = {cls_name: idx for idx, cls_name in enumerate(ifc_classes)}
         num_classes = len(ifc_classes)
 
-        path_to_graph_raw =  os.path.dirname(graph.json.__file__)
+        # Loading all jsons to create graph, each json represent one graph.
         graph_files = [
-            f for f in os.listdir(path_to_graph_raw)
-            if f.endswith("_with_latent.json")
+            f for f in os.listdir(graph_folder)
+            if f.endswith(".json")
         ]
-
         self.graphs = []
-
         for file_name in graph_files:
-            #Get data from json
-            with open(os.path.join(path_to_graph_raw, file_name), 'r') as f:
+            # Get data from json
+            with open(os.path.join(graph_folder, file_name), 'r') as f:
                 data = json.load(f)
-            #Nodes
+            # Nodes
             node_features = []
             targets = []
             nodes_sorted = sorted(data['nodes'], key=lambda x: x['index'])
@@ -58,14 +70,17 @@ class GCNDataset(DGLDataset):
             g.ndata['target'] = targets 
             # Adding graph
             self.graphs.append(g)
-
         self.batched_graph = dgl.batch(self.graphs)
+    
+    def load_training(self):
+        cfg_folder = os.path.dirname(m02_Data_Files.d06_SDF_Ready.__file__)
+        graph_folder = os.path.dirname(m02_Data_Files.d06_SDF_Ready.__file__)
+        self.load_data(graph_folder, cfg_folder)
 
-    def __getitem__(self, idx):
-        return self.graphs[idx]
-
-    def __len__(self):
-        return len(self.graphs)
+    def load_forecast(self):
+        cfg_folder = os.path.dirname(m02_Data_Files.d08_Forecast_Data.__file__)
+        graph_folder = os.path.dirname(m02_Data_Files.d08_Forecast_Data.__file__)
+        self.load_data(graph_folder, cfg_folder)
 
 def main():
     data = GCNDataset()
