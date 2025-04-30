@@ -8,7 +8,7 @@ ifc_classes:
   - IfcRoof
   - IfcWall
 
-data_expand: True
+data_expand: False
 copies: 1
 
 rotation:

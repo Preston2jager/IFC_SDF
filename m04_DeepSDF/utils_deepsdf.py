@@ -5,8 +5,6 @@ import numpy as np
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# mp.offline()
-
 def clamp(x, delta=torch.tensor([[0.1]]).to(device)):
     """Clamp function introduced in the paper DeepSDF.
     This returns a value in range [-delta, delta]. If x is within this range, it returns x, else one of the extremes.
@@ -19,22 +17,8 @@ def clamp(x, delta=torch.tensor([[0.1]]).to(device)):
     minimum = torch.amin(torch.vstack((delta[0], maximum)))
     return minimum
 
-
-#def SDFLoss_multishape(sdf, prediction, x_latent, sigma):
-    #"""Loss function introduced in the paper DeepSDF for multiple shapes."""
-    #l1 = torch.mean(torch.abs(prediction - sdf))
-    #l2 = sigma**2 * torch.mean(torch.linalg.norm(x_latent, dim=1, ord=2))
-    #loss = l1 + l2
-    #print(f'Loss prediction: {l1:.3f}, Loss regulariser: {l2:.3f}')
-    #return loss, l1, l2
-
 def SDFLoss_multishape_full_exp(sdf, prediction, x_latent, sigma, alpha=0.5, w_max=1.2, w_min=0.05):
-    """
-    简单的全程指数衰减:
-    weight = w_max * exp(-alpha * sdf)
-    - sdf=0 => weight=w_max
-    - sdf越来越大 => weight越来越接近0
-    """
+
     dtype = sdf.dtype
     device = sdf.device
 
@@ -102,7 +86,6 @@ def predict_sdf(latent, coords_batches, model):
 
 
 def extract_mesh(grad_size_axis, sdf):
-    # Extract zero-level set with marching cubes
     grid_sdf = sdf.view(grad_size_axis, grad_size_axis, grad_size_axis).detach().cpu().numpy()
     vertices, faces, normals, _ = skimage.measure.marching_cubes(grid_sdf, level=0.00)
     x_max = np.array([15, 15, 15])  # 目标最大范围

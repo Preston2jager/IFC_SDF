@@ -43,20 +43,20 @@ class GCNDataset(DGLDataset):
                 full_feature = torch.cat([one_hot_vector, latent_code], dim=0)
                 node_features.append(full_feature)
                 targets.append(latent_code)
-            #Feature list convert
+            # Feature list convert
             node_features = torch.stack(node_features)
             targets = torch.stack(targets) 
-            #Edges
+            # Edges
             edges = data['edges']
             src, dst = zip(*edges)
             src = torch.tensor(src)
             dst = torch.tensor(dst)
             g = dgl.graph((src, dst))
             g = dgl.to_bidirected(g)
-            #g = dgl.add_self_loop(g)
+            # g = dgl.add_self_loop(g)
             g.ndata['feat'] = node_features
             g.ndata['target'] = targets 
-            #Adding graph
+            # Adding graph
             self.graphs.append(g)
 
         self.batched_graph = dgl.batch(self.graphs)
