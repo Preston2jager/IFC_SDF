@@ -16,7 +16,7 @@ import m01_Config_Files
 import m02_Data_Files.d01_Raw_IFC
 import m02_Data_Files.d01_Raw_IFC.d01_Expanded
 import m02_Data_Files.d02_Object_Files
-import m02_Data_Files.d05_Graph
+import m02_Data_Files.d03_Graph
 
 def npy_read_out(file):
     data = np.load(file, allow_pickle=True)  

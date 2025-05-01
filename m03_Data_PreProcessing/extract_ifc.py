@@ -9,18 +9,17 @@ import m01_Config_Files
 import m02_Data_Files.d01_Raw_IFC
 import m02_Data_Files.d01_Raw_IFC.d01_Expanded
 import m02_Data_Files.d02_Object_Files
-import m02_Data_Files.d05_Graph
-import m02_Data_Files.d03_SDF_Converted
+import m02_Data_Files.d03_Graph
+import m02_Data_Files.d04_SDF_Converted
 
-def main(cfg):
+def main(cfg,ifc_cfg):
 
     # Extracting objects from IFC files
-
     # Define paths
     IFC_folder_path = os.path.dirname(m02_Data_Files.d01_Raw_IFC.__file__)
     Expanded_ifc_folder_path = os.path.dirname(m02_Data_Files.d01_Raw_IFC.d01_Expanded.__file__)
     Object_folder_path = os.path.dirname(m02_Data_Files.d02_Object_Files.__file__)
-    Graph_folder_path = os.path.dirname(m02_Data_Files.d05_Graph.__file__)
+    Graph_folder_path = os.path.dirname(m02_Data_Files.d03_Graph.__file__)
     NPY_folder_path = os.path.dirname(m02_Data_Files.d03_SDF_Converted.__file__)
 
     # Delete previous files
@@ -43,7 +42,6 @@ def main(cfg):
             if filename.lower().endswith('.ifc'):
                 IFC_file_expand(filename, Num_of_copy)
         
-
     # Generate new global id for all files
     for filename in os.listdir(Expanded_ifc_folder_path):
         if filename.lower().endswith('.ifc'):
@@ -53,7 +51,7 @@ def main(cfg):
     index = 1
     settings = ifcopenshell.geom.settings() 
     settings.set(settings.USE_WORLD_COORDS, True)
-    IFC_classes = cfg.get("ifc_classes", [])
+    IFC_classes = ifc_cfg.get("ifc_classes", [])
     for filename in os.listdir(Expanded_ifc_folder_path):
         if filename.lower().endswith('.ifc'):
             IFC_file_path = os.path.join(Expanded_ifc_folder_path, filename)
@@ -66,7 +64,11 @@ def main(cfg):
     Batch_obj_transform(Object_folder_path,cfg)
         
 if __name__=='__main__':
-    cfg_path = os.path.join(os.path.dirname(m01_Config_Files.__file__), 'extracting.yaml')
-    with open(cfg_path, 'rb') as f:
-        cfg = yaml.load(f, Loader=yaml.FullLoader)
-    main(cfg)
+    cfg_path = os.path.dirname(m01_Config_Files.__file__)
+    cfg_file = os.path.join(cfg_path, 'extracting.yaml')
+    ifc_cfg_file = os.path.join(cfg_path, 'ifc.yaml')
+    with open(cfg_file, 'rb') as f:
+        cfg_yaml = yaml.load(f, Loader=yaml.FullLoader)
+    with open(ifc_cfg_file, 'rb') as f:
+        ifc_yaml = yaml.load(f, Loader=yaml.FullLoader)
+    main(cfg_yaml, ifc_yaml)

@@ -1,25 +1,20 @@
 import os
-import yaml 
 import time 
 import torch
-import shutil
 
-import torch.nn.functional as F
 from torch.utils.data import random_split
 from dgl.dataloading import GraphDataLoader
 
-import numpy as np
 import m05_GCN.model_gcn  as model_gcn
 from m05_GCN.dataset_gcn import GCNDataset
 
-import m01_Config_Files
-import m02_Data_Files.d06_SDF_Ready
 import m02_Data_Files.d07_GCN_Results
 
 class GCN_Runner:
 
-    def __init__(self, config):
+    def __init__(self, config, output_weight_file):
         self.cfg = config
+        self.output = output_weight_file
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu') 
         self.model = model_gcn.GCN(self.cfg).to(self.device)
         self.optimizer = torch.optim.Adam(
@@ -60,7 +55,7 @@ class GCN_Runner:
         return graph
 
     def train(self):
-        train_weight_file = os.path.join(os.path.dirname(m02_Data_Files.d07_GCN_Results.__file__),"best_model.pth")
+        output_weight_file = self.output
         train_loader, val_loader = self.get_loaders()
         start_time = time.time()
         best_val_loss = float('inf')
@@ -74,7 +69,7 @@ class GCN_Runner:
             
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
-                torch.save(self.model.state_dict(), train_weight_file)
+                torch.save(self.model.state_dict(), output_weight_file)
                 print(f"Best model saved at epoch {epoch+1} with Val Loss {val_loss:.4f}")
         print(f"Training completed in {time.time() - start_time:.2f} s")
 
@@ -118,15 +113,17 @@ class GCN_Runner:
                 total_loss += loss.item()
         return total_loss / len(loader)
     
-    def forecast(self, loader):
+    def forecast(self):
         self.model.eval()
+        # TODO: loading path
+        self.model.load_state_dict(torch.load("checkpoints/gcn_best.pth", map_location=self.device))
         target_graph = self.get_graph_forecast().to(self.device)
         with torch.no_grad():  
             x = target_graph.ndata['feat']
             x_masked = x.clone()
             x_masked[:, 512:] = 0
             out = self.model(target_graph, x_masked)
-        return 
+        return out
     
     def balanced_abs_loss(self, pred, target, beta=0.3):
         """

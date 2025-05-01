@@ -11,7 +11,7 @@ from tqdm import tqdm
 
 import m01_Config_Files
 import m02_Data_Files.d02_Object_Files
-import m02_Data_Files.d03_SDF_Converted
+import m02_Data_Files.d04_SDF_Converted
 """
 For each object, sample points and store their distance to the nearest triangle.
 Sampling follows the approach used in the DeepSDF paper.
@@ -156,9 +156,9 @@ def main(cfg):
         # The samples are p_total, while the latent class is [obj_idx]
         Samples_dict[obj_idx]['samples_latent_class'] = Combine_sample_latent(p_total, np.array([obj_idx], dtype=np.int32))
 
-    np.save(os.path.join(os.path.dirname(m02_Data_Files.d03_SDF_Converted.__file__), f'samples_dict.npy'), Samples_dict)
-    np.save(os.path.join(os.path.dirname(m02_Data_Files.d03_SDF_Converted.__file__), f'idx_str2int_dict.npy'), idx_str2int_dict)
-    np.save(os.path.join(os.path.dirname(m02_Data_Files.d03_SDF_Converted.__file__), f'idx_int2str_dict.npy'), idx_int2str_dict)
+    np.save(os.path.join(os.path.dirname(m02_Data_Files.d04_SDF_Converted.__file__), f'samples_dict.npy'), Samples_dict)
+    np.save(os.path.join(os.path.dirname(m02_Data_Files.d04_SDF_Converted.__file__), f'idx_str2int_dict.npy'), idx_str2int_dict)
+    np.save(os.path.join(os.path.dirname(m02_Data_Files.d04_SDF_Converted.__file__), f'idx_int2str_dict.npy'), idx_int2str_dict)
     print("Training data converted.")
 
 if __name__=='__main__':

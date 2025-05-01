@@ -3,7 +3,7 @@ import os
 import json
 
 import m01_Config_Files
-import m02_Data_Files.d05_Graph
+import m02_Data_Files.d03_Graph
 
 
 def ifc_to_graph(project_index, ifc, output_prefix='ifc_graph'):
@@ -71,7 +71,7 @@ def ifc_to_graph(project_index, ifc, output_prefix='ifc_graph'):
         for main_index in main_wall:
             graph["edges"].append((side_index, main_index))
 
-    Output_dir = os.path.dirname(m02_Data_Files.d05_Graph.__file__)
+    Output_dir = os.path.dirname(m02_Data_Files.d03_Graph.__file__)
     Output_file_name = os.path.join(Output_dir, f"{project_index}:{output_prefix}.json")
     with open(Output_file_name, "w") as f:
         json.dump(graph, f, indent=2)
