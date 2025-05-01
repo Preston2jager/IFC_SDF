@@ -15,7 +15,7 @@ def parse_folder_time(folder_name):
     try:
         parts = folder_name.split('_')
         if len(parts) != 3:
-            raise ValueError(f"文件夹名格式错误: {folder_name}")
+            raise ValueError(f"Incorrect folder name format: {folder_name}")
         day = int(parts[0])
         month = int(parts[1])
         hour = int(parts[2][0:2])
@@ -24,7 +24,7 @@ def parse_folder_time(folder_name):
         year = datetime.datetime.now().year
         return datetime.datetime(year, month, day, hour, minute, second)
     except Exception as e:
-        print(f"解析时间戳失败：{folder_name}，错误：{e}")
+        print(f"Failed to extract：{folder_name}， Error：{e}")
         return None
     
 def find_nearest_folder(base_dir):
@@ -65,7 +65,7 @@ def adding_latent():
     latent_codes = latent_codes_dict["best_latent_codes"]
 
     if len(idx2name) != len(latent_codes):
-        raise ValueError(f"idx2name数量({len(idx2name)})和latent code数量({len(latent_codes)})不一致！")
+        raise ValueError(f"Length of idx2name({len(idx2name)})does not match({len(latent_codes)})")
     name_to_latent = {}
 
     for idx, full_name in idx2name.items():
@@ -75,7 +75,7 @@ def adding_latent():
                 global_id = parts[2]  
                 name_to_latent[global_id] = latent_codes[idx]
             else:
-                print(f"[警告] 解析失败 {full_name}")
+                print(f"Fail to extract from {full_name}")
 
     for filename in os.listdir(graph_base_path):
         if filename.endswith(".json"):
@@ -90,10 +90,10 @@ def adding_latent():
                     latent_vector = name_to_latent[key]
                     node["latent_code"] = latent_vector.tolist()  # 转成list，json不能存numpy array
                 else:
-                    print(f"[警告] 没找到 {key}，跳过")
+                    print(f"Fail to find {key}， Skip")
             with open(filepath, "w") as f:
                 json.dump(data, f, indent=2)
-            print(f"已更新：{filename}")
+            print(f"Updated：{filename}")
 
 def Delete_files(folder_path, file_type):
     """

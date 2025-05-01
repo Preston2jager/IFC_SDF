@@ -1,12 +1,4 @@
 # Config file for IFC extraction
-ifc_classes:  
-  - IfcWindow
-  - IfcDoor
-  - IfcColumn
-  - IfcBeam
-  - IfcSlab
-  - IfcRoof
-  - IfcWall
 
 data_expand: False
 copies: 1

@@ -9,10 +9,15 @@ import m05_GCN.model_gcn  as model_gcn
 from m05_GCN.dataset_gcn import GCNDataset
 
 import m02_Data_Files.d07_GCN_Results
+import m02_Data_Files.d08_Predict_Data.d01_Config
+import m02_Data_Files.d08_Predict_Data.d05_GCN
+
 
 class GCN_Runner:
 
-    def __init__(self, config, output_weight_file):
+    def __init__(self, config, output_weight_file="None"):
+        if output_weight_file == "None":
+            print("Output_path not given, predict only")
         self.cfg = config
         self.output = output_weight_file
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu') 
@@ -44,15 +49,20 @@ class GCN_Runner:
         )
         return train_loader, val_loader
     
-    def get_graph_forecast(self):
+    def get_predict_loader(self):
         """
-        Load a single graph for forecasting.
+        Load a single graph for predicting.
         """
         dataset = GCNDataset()
-        dataset.load_forecast()
-        graph = dataset[0]
-        graph = graph.to(self.device)
-        return graph
+        dataset.load_predict()
+        dataset_size = len(dataset)
+        batch = min(dataset_size, self.cfg['GCN_batch_size'])
+        predict_loader = GraphDataLoader(
+            dataset,
+            batch_size = batch,
+            shuffle = False
+        )   
+        return predict_loader
 
     def train(self):
         output_weight_file = self.output
@@ -74,56 +84,74 @@ class GCN_Runner:
         print(f"Training completed in {time.time() - start_time:.2f} s")
 
     def train_epoch(self, loader):
+        mask = int(self.cfg['GCN_tag_dim'])
         self.model.train()
         total_loss = 0
         for batched_graph in loader:
             batched_graph = batched_graph.to(self.device)
             x = batched_graph.ndata['feat']           
             target = batched_graph.ndata['target']   
-            x_masked = x.clone()
-            x_masked[:, 512:] = 0
-            out = self.model(batched_graph, x_masked)    
-
-            #loss = self.topk_dim_loss(out, target)
-            loss = self.balanced_abs_loss(out, target)
-            #loss = self.focal_l1_loss(out, target)
-
-            self.optimizer.zero_grad()
-            loss.backward()
-            self.optimizer.step()
-            total_loss += loss.item()
+            num_nodes = batched_graph.number_of_nodes()
+            per_graph_loss = 0
+            for i in range(num_nodes):
+                x_masked = x.clone()
+                x_masked[i, mask:] = 0
+                out = self.model(batched_graph, x_masked)
+                pred = out[i].unsqueeze(0)      # [1, latent_dim]
+                true = target[i].unsqueeze(0)   # [1, latent_dim]
+                loss = self.balanced_abs_loss(pred, true)
+                self.optimizer.zero_grad()
+                loss.backward()
+                self.optimizer.step()
+                per_graph_loss += loss.item()
+            total_loss += per_graph_loss / num_nodes
         return total_loss / len(loader)
 
     def val_epoch(self, loader):
+        mask = int(self.cfg['GCN_tag_dim'])
         self.model.eval()
         total_loss = 0
         with torch.no_grad():  
             for batched_graph in loader:
                 batched_graph = batched_graph.to(self.device)
                 x = batched_graph.ndata['feat']
+                target = batched_graph.ndata['target']
+                num_nodes = batched_graph.number_of_nodes()
+                per_graph_loss = 0
+                for i in range(num_nodes):
+                    x_masked = x.clone()
+                    x_masked[i, mask:] = 0
+                    out = self.model(batched_graph, x_masked)
+                    pred = out[i].unsqueeze(0)
+                    true = target[i].unsqueeze(0)
+                    loss = self.balanced_abs_loss(pred, true)
+                    per_graph_loss += loss.item()
+                total_loss += per_graph_loss / num_nodes
+        return total_loss / len(loader)
+
+    
+    def predict(self):
+        #TODO: 增加对于特定节点的遮罩
+        self.model.eval()
+        # Load weights
+        weight_folder_path = os.path.dirname(m02_Data_Files.d08_Predict_Data.d05_GCN.__file__)
+        weight_file = os.path.join(weight_folder_path, "best_model.pth")
+        self.model.load_state_dict(torch.load(weight_file, map_location=self.device))
+        # Load graphs
+        predict_loader = self.get_predict_loader()
+        # Predict
+        predictions = []
+        with torch.no_grad():
+            for batched_graph in predict_loader:
+                batched_graph = batched_graph.to(self.device)
+                x = batched_graph.ndata['feat']
                 x_masked = x.clone()
                 x_masked[:, 512:] = 0
                 out = self.model(batched_graph, x_masked)
-                target = batched_graph.ndata['target']
+                predictions.append(out.cpu())  # 保留在 CPU 上做后处理
 
-                #loss = self.topk_dim_loss(out, target)
-                loss = self.balanced_abs_loss(out, target)
-                #loss = self.focal_l1_loss(out, target)
+        return torch.cat(predictions, dim=0)  # 拼成一个完整的 [N, D] 输出
 
-                total_loss += loss.item()
-        return total_loss / len(loader)
-    
-    def forecast(self):
-        self.model.eval()
-        # TODO: loading path
-        self.model.load_state_dict(torch.load("checkpoints/gcn_best.pth", map_location=self.device))
-        target_graph = self.get_graph_forecast().to(self.device)
-        with torch.no_grad():  
-            x = target_graph.ndata['feat']
-            x_masked = x.clone()
-            x_masked[:, 512:] = 0
-            out = self.model(target_graph, x_masked)
-        return out
     
     def balanced_abs_loss(self, pred, target, beta=0.3):
         """

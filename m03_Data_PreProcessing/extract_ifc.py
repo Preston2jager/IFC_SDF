@@ -20,7 +20,7 @@ def main(cfg,ifc_cfg):
     Expanded_ifc_folder_path = os.path.dirname(m02_Data_Files.d01_Raw_IFC.d01_Expanded.__file__)
     Object_folder_path = os.path.dirname(m02_Data_Files.d02_Object_Files.__file__)
     Graph_folder_path = os.path.dirname(m02_Data_Files.d03_Graph.__file__)
-    NPY_folder_path = os.path.dirname(m02_Data_Files.d03_SDF_Converted.__file__)
+    NPY_folder_path = os.path.dirname(m02_Data_Files.d04_SDF_Converted.__file__)
 
     # Delete previous files
     Delete_files(Expanded_ifc_folder_path, ".ifc")

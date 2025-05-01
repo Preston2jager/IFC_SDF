@@ -8,12 +8,13 @@ from dgl.data import DGLDataset
 
 import m02_Data_Files.d06_GCN_Training.d01_Graphs
 import m02_Data_Files.d06_GCN_Training.d02_Configs
-import m02_Data_Files.d08_Forecast_Data
+import m02_Data_Files.d08_Predict_Data.d01_Config
+import m02_Data_Files.d08_Predict_Data.d03_Graph
 
 class GCNDataset(DGLDataset):
 
     def __init__(self):
-        super().__init__(name='my_gcn_dataset')
+        super().__init__(name='GCN_dataset')
   
     def __getitem__(self, idx):
         return self.graphs[idx]
@@ -23,10 +24,10 @@ class GCNDataset(DGLDataset):
     
     def load_data(self, graph_folder, cfg_folder):
         """
-        Load json data and construct into dgl graph data.
+        General function to load json graph file and construct it into dgl graph
         """
         # Loading yaml to get ifcclass
-        ifc_cfg_file = os.path.join(cfg_folder, 'extracting.yaml')
+        ifc_cfg_file = os.path.join(cfg_folder, 'ifc.yaml')
         with open(ifc_cfg_file, 'rb') as f:
             data_cfg = yaml.load(f, Loader=yaml.FullLoader)
         ifc_classes = data_cfg['ifc_classes']
@@ -71,13 +72,19 @@ class GCNDataset(DGLDataset):
         self.batched_graph = dgl.batch(self.graphs)
     
     def load_training(self):
+        """
+        Using configs and data in training folder to create training dataset.
+        """
         cfg_folder = os.path.dirname(m02_Data_Files.d06_GCN_Training.d02_Configs.__file__)
         graph_folder = os.path.dirname(m02_Data_Files.d06_GCN_Training.d01_Graphs.__file__)
         self.load_data(graph_folder, cfg_folder)
 
-    def load_forecast(self):
-        cfg_folder = os.path.dirname(m02_Data_Files.d08_Forecast_Data.__file__)
-        graph_folder = os.path.dirname(m02_Data_Files.d08_Forecast_Data.__file__)
+    def load_predict(self):
+        """
+        Using configs and data in predict folder to create training dataset.
+        """
+        cfg_folder = os.path.dirname(m02_Data_Files.d08_Predict_Data.d01_Config.__file__)
+        graph_folder = os.path.dirname(m02_Data_Files.d08_Predict_Data.d03_Graph.__file__)
         self.load_data(graph_folder, cfg_folder)
 
 def main():
