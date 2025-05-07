@@ -1,10 +1,11 @@
-import numpy as np
 import torch
-from torch.utils.data import Dataset
 import os
-import time
+
+from torch.utils.data import Dataset
+import numpy as np
 
 import m02_Data_Files.d04_SDF_Converted
+import m02_Data_Files.d08_Predict_Data.d04_SDF
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -12,8 +13,8 @@ class SDFDataset(Dataset):
     """
     TODO: adapting to handle multiple objects
     """
-    def __init__(self):
-        samples_dict = np.load(os.path.join(os.path.dirname(m02_Data_Files.d04_SDF_Converted.__file__), f'samples_dict.npy'), allow_pickle=True).item()
+    def __init__(self, data_folder_path):
+        samples_dict = np.load(os.path.join(os.path.dirname(data_folder_path.__file__), f'samples_dict.npy'), allow_pickle=True).item()
         self.data = dict()
         for obj_idx in list(samples_dict.keys()):  # samples_dict.keys() for all the objects
             for key in samples_dict[obj_idx].keys():   # keys are ['samples', 'sdf', 'latent_class', 'samples_latent_class']
@@ -25,7 +26,7 @@ class SDFDataset(Dataset):
                 else:
                     self.data[key] = torch.vstack((self.data[key], value))
         return
-
+    
     def __len__(self):
         return self.data['sdf'].shape[0]
 

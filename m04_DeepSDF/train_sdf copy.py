@@ -25,7 +25,7 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 torch.cuda.empty_cache()
 
 class Trainer():
-
+    
     def __init__(self, train_cfg):
 
         # Directories and paths
@@ -45,7 +45,14 @@ class Trainer():
         else:
             print(f'Warning: {Source_idx_str2int_path} not found! idx_str2int_dict not saved.')
 
-        
+        Source_idx_int2str_path = os.path.join(os.path.dirname(m02_Data_Files.d04_SDF_Converted.__file__), 'idx_int2str_dict.npy')
+        Target_idx_int2str_path = os.path.join(self.run_dir, 'idx_int2str_dict.npy')
+        if os.path.exists(Source_idx_int2str_path):
+            idx_int2str_dict = np.load(Source_idx_int2str_path, allow_pickle=True).item()
+            np.save(Target_idx_int2str_path, idx_int2str_dict)
+            print(f'Saved idx_int2str_dict to {Target_idx_int2str_path}')
+        else:
+            print(f'Warning: {Source_idx_int2str_path} not found! idx_str2int_dict not saved.')
 
         # Logging
         self.writer = SummaryWriter(log_dir=self.run_dir)
@@ -263,16 +270,6 @@ class Trainer():
         self.writer.add_scalar('Latent code loss', avg_loss_latent, self.epoch)
 
         return avg_val_loss
-
-    def copy_training_idx_files(self):
-        Source_idx_int2str_path = os.path.join(os.path.dirname(m02_Data_Files.d04_SDF_Converted.__file__), 'idx_int2str_dict.npy')
-        Target_idx_int2str_path = os.path.join(self.run_dir, 'idx_int2str_dict.npy')
-        if os.path.exists(Source_idx_int2str_path):
-            idx_int2str_dict = np.load(Source_idx_int2str_path, allow_pickle=True).item()
-            np.save(Target_idx_int2str_path, idx_int2str_dict)
-            print(f'Saved idx_int2str_dict to {Target_idx_int2str_path}')
-        else:
-            print(f'Warning: {Source_idx_int2str_path} not found! idx_str2int_dict not saved.')
 
 if __name__=='__main__':
     train_cfg_path = os.path.join(os.path.dirname(m01_Config_Files.__file__), 'training.yaml')
