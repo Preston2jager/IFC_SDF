@@ -4,9 +4,6 @@ import os
 from torch.utils.data import Dataset
 import numpy as np
 
-import m02_Data_Files.d04_SDF_Converted
-import m02_Data_Files.d08_Predict_Data.d04_SDF
-
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class SDFDataset(Dataset):
