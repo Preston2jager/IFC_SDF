@@ -14,7 +14,7 @@ class SDFDataset(Dataset):
     TODO: adapting to handle multiple objects
     """
     def __init__(self, data_folder_path):
-        samples_dict = np.load(os.path.join(os.path.dirname(data_folder_path.__file__), f'samples_dict.npy'), allow_pickle=True).item()
+        samples_dict = np.load(os.path.join(data_folder_path, 'samples_dict.npy'), allow_pickle=True).item()
         self.data = dict()
         for obj_idx in list(samples_dict.keys()):  # samples_dict.keys() for all the objects
             for key in samples_dict[obj_idx].keys():   # keys are ['samples', 'sdf', 'latent_class', 'samples_latent_class']
