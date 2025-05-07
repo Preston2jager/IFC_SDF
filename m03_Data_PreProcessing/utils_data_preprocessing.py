@@ -12,11 +12,10 @@ import yaml
 import numpy as np
 from collections import deque, defaultdict
 
-import m01_Config_Files
 import m02_Data_Files.d01_Raw_IFC
 import m02_Data_Files.d01_Raw_IFC.d01_Expanded
 import m02_Data_Files.d02_Object_Files
-import m02_Data_Files.d03_Graph
+
 
 def npy_read_out(file):
     data = np.load(file, allow_pickle=True)  
@@ -39,13 +38,11 @@ def Delete_files(folder_path, file_type):
             os.remove(target_file_path)
             print(f"File Deleted: {target_file_path}")
 
-def IFC_file_expand(filename, copies):
+def IFC_file_expand(filename, copies, Raw_IFC_dir, Expanded_IFC_dir):
     """
     Copy and rename IFC files.
     """
-    Raw_IFC_dir = os.path.dirname(m02_Data_Files.d01_Raw_IFC.__file__)
     Raw_IFC_file_path = os.path.join(Raw_IFC_dir, filename)
-    Expanded_IFC_dir = os.path.dirname(m02_Data_Files.d01_Raw_IFC.d01_Expanded.__file__)
     File_base, File_ext = os.path.splitext(filename)
     for i in range(1, copies + 1):
         Target_file_name = f"{File_base}_copy{i}{File_ext}"
@@ -53,11 +50,10 @@ def IFC_file_expand(filename, copies):
         shutil.copy(Raw_IFC_file_path, Target_file_path)
         print(f"IFC Expansion: {Target_file_path} Created")
 
-def Regenerate_global_ids(filename):
+def Regenerate_global_ids(filename, IFC_dir):
     """
     Generate new uids for all IFC elements.
     """
-    IFC_dir = os.path.dirname(m02_Data_Files.d01_Raw_IFC.d01_Expanded.__file__)
     IFC_file_path = os.path.join(IFC_dir,filename)
     IFC_file = ifcopenshell.open(IFC_file_path)
     for entity in IFC_file.by_type("IfcRoot"):
@@ -130,7 +126,7 @@ def Export_general_elements(element, index, settings):
         Segments = None
     return Vertices, Triangles, element.GlobalId, IFC_class, index, Split, Segments
 
-def IFC_to_obj(IFC_file, IFC_classes, index, settings):
+def IFC_to_obj(Objs_dir, IFC_file, IFC_classes, index, settings):
     """
     Export IFC elements to .obj files.
     """
@@ -150,11 +146,11 @@ def IFC_to_obj(IFC_file, IFC_classes, index, settings):
     # Process windows and doors
     for element in Window_and_door_elements:
         Vertices, Triangles, element.GlobalId, IFC_class, index, Split, Segments = Export_windows_and_doors(element, index, settings)
-        Write_to_obj(Vertices, Triangles, element.GlobalId, IFC_class, index, Split, Segments)
+        Write_to_obj(Objs_dir, Vertices, Triangles, element.GlobalId, IFC_class, index, Split, Segments)
     # Process other elements.
     for element in General_elements:
         Vertices, Triangles, element.GlobalId, IFC_class, index, Split, Segments = Export_general_elements(element, index, settings)
-        Write_to_obj(Vertices, Triangles, element.GlobalId, IFC_class, index, Split, Segments)
+        Write_to_obj(Objs_dir, Vertices, Triangles, element.GlobalId, IFC_class, index, Split, Segments)
 
 def Get_geometry(element, settings):
     """
@@ -210,11 +206,10 @@ def Find_connected_components(faces, face_graph):
             Segements.append(group)
     return Segements
 
-def Write_to_obj(vertices, faces, uid, ifc_class, index, split=False, groups=None):
+def Write_to_obj(Objs_dir, vertices, faces, uid, ifc_class, index, split=False, groups=None):
     """
     Export IFC elements as obj, also handle elements with multiple parts.
     """
-    Objs_dir = os.path.dirname(m02_Data_Files.d02_Object_Files.__file__)
     if split:
         for split_num, group in enumerate(groups, start=1):
             used_vertex_indices = set()

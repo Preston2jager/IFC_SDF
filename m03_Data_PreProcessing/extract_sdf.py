@@ -1,8 +1,9 @@
-
+import sys
 import os
 import glob
 import yaml
 import trimesh
+import argparse
 
 import numpy as np
 import point_cloud_utils as pcu
@@ -12,10 +13,8 @@ from tqdm import tqdm
 import m01_Config_Files
 import m02_Data_Files.d02_Object_Files
 import m02_Data_Files.d04_SDF_Converted
-"""
-For each object, sample points and store their distance to the nearest triangle.
-Sampling follows the approach used in the DeepSDF paper.
-"""
+import m02_Data_Files.d08_Predict_Data.d02_IFC.d02_obj
+import m02_Data_Files.d08_Predict_Data.d04_SDF
 
 def Combine_sample_latent(samples, latent_class):
     """Combine each sample (x, y, z) with the latent code generated for this object.
@@ -111,25 +110,18 @@ def Sample_points_and_compute_sdf(verts, faces, total_area, volume,cfg):
 
     return p_total, sdf
 
-def main(cfg):
-
-    # Full paths to all .obj
-    obj_files = glob(os.path.join(os.path.dirname(m02_Data_Files.d02_Object_Files.__file__), '*.obj'))
-
+def main(cfg, obj_files, output_path):
     # File to store the samples and SDFs
     Samples_dict = dict()
-
     # Store conversion between object index (int) and its folder name (str)
     idx_str2int_dict = dict()
     idx_int2str_dict = dict()
 
     for obj_idx, obj_path in enumerate(tqdm(obj_files, desc="Processing OBJ files")):
-
         # Object unique index. Str to int by byte encoding
         obj_idx_str = os.path.splitext(os.path.basename(obj_path))[0] 
         idx_str2int_dict[obj_idx_str] = obj_idx
         idx_int2str_dict[obj_idx] = obj_idx_str
-
         # Dictionary to store the samples and SDFs
         Samples_dict[obj_idx] = dict()
 
@@ -156,13 +148,37 @@ def main(cfg):
         # The samples are p_total, while the latent class is [obj_idx]
         Samples_dict[obj_idx]['samples_latent_class'] = Combine_sample_latent(p_total, np.array([obj_idx], dtype=np.int32))
 
-    np.save(os.path.join(os.path.dirname(m02_Data_Files.d04_SDF_Converted.__file__), f'samples_dict.npy'), Samples_dict)
-    np.save(os.path.join(os.path.dirname(m02_Data_Files.d04_SDF_Converted.__file__), f'idx_str2int_dict.npy'), idx_str2int_dict)
-    np.save(os.path.join(os.path.dirname(m02_Data_Files.d04_SDF_Converted.__file__), f'idx_int2str_dict.npy'), idx_int2str_dict)
+    np.save(os.path.join(output_path, f'samples_dict.npy'), Samples_dict)
+    np.save(os.path.join(output_path, f'idx_str2int_dict.npy'), idx_str2int_dict)
+    np.save(os.path.join(output_path, f'idx_int2str_dict.npy'), idx_int2str_dict)
+    
     print("Training data converted.")
 
 if __name__=='__main__':
-    cfg_path = os.path.join(os.path.dirname(m01_Config_Files.__file__), 'extracting.yaml')
-    with open(cfg_path, 'rb') as f:
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("mode", help="Mode of operation, train or pred", nargs='?', default="train")
+    args = parser.parse_args()
+
+    if args.mode == "train":
+        print("Extract for training data")
+        cfg_path = os.path.dirname(m01_Config_Files.__file__)
+        cfg_file = os.path.join(cfg_path, 'extracting.yaml')
+        obj_files = glob(os.path.join(os.path.dirname(m02_Data_Files.d02_Object_Files.__file__), '*.obj'))
+        output_path = os.path.dirname(m02_Data_Files.d04_SDF_Converted.__file__)
+    elif args.mode == "pred":
+        print("Extract for prediction data")
+        cfg_path = os.path.dirname(m02_Data_Files.d08_Predict_Data.d01_Config.__file__)
+        cfg_file = os.path.join(cfg_path, 'extracting.yaml')
+        obj_files = glob(os.path.join(os.path.dirname(m02_Data_Files.d08_Predict_Data.d02_IFC.d02_obj.__file__), '*.obj'))
+        output_path = os.path.dirname(m02_Data_Files.d08_Predict_Data.d04_SDF.__file__)
+    else:
+        print("Incorrect mode, train or pred?")
+        sys.exit(1)
+
+    with open(cfg_file, 'rb') as f:
         cfg = yaml.load(f, Loader=yaml.FullLoader)
-    main(cfg)
+    main(cfg, obj_files, output_path)
+
+
+

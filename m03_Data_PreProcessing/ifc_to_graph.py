@@ -2,16 +2,11 @@ import yaml
 import os
 import json
 
-import m01_Config_Files
-import m02_Data_Files.d03_Graph
-
-
-def ifc_to_graph(project_index, ifc, output_prefix='ifc_graph'):
+def ifc_to_graph(ifc_cfg_path, output_dir, project_index, ifc, output_prefix='ifc_graph'):
     """
     Generate graphs from ifc, output as json, without latent codes.
     """
     # Get ifc classes from config files
-    ifc_cfg_path = os.path.dirname(m01_Config_Files.__file__)
     ifc_cfg = os.path.join(ifc_cfg_path,"ifc.yaml")
     with open(ifc_cfg, 'r') as f:
         data = yaml.load(f, Loader=yaml.FullLoader)
@@ -71,7 +66,6 @@ def ifc_to_graph(project_index, ifc, output_prefix='ifc_graph'):
         for main_index in main_wall:
             graph["edges"].append((side_index, main_index))
 
-    Output_dir = os.path.dirname(m02_Data_Files.d03_Graph.__file__)
-    Output_file_name = os.path.join(Output_dir, f"{project_index}:{output_prefix}.json")
+    Output_file_name = os.path.join(output_dir, f"{project_index}:{output_prefix}.json")
     with open(Output_file_name, "w") as f:
         json.dump(graph, f, indent=2)

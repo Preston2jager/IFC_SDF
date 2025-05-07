@@ -1,7 +1,9 @@
 import torch
 import os
+import sys
 import time
 import yaml
+import argparse
 
 from torch.utils.tensorboard import SummaryWriter
 import torch.optim as optim
@@ -19,36 +21,34 @@ import dataset_sdf as dataset
 import m01_Config_Files
 import m02_Data_Files.d04_SDF_Converted
 import m02_Data_Files.d05_SDF_Results.runs_sdf as runs
+import m02_Data_Files.d08_Predict_Data.d01_Config
+import m02_Data_Files.d08_Predict_Data.d04_SDF
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 torch.cuda.empty_cache()
 
-class Trainer():
+class SDF_Runner():
 
-    def __init__(self, train_cfg):
+    def __init__(self, train_cfg, args):
+
+        if args.mode == "train":
+            self.runs_dir = os.path.dirname(runs.__file__) 
+            self.run_dir = os.path.join(self.runs_dir, self.timestamp_run) 
+            samples_dict_path = os.path.join(os.path.dirname(m02_Data_Files.d04_SDF_Converted.__file__), f'samples_dict.npy')
+        elif args.mode == "pred":
+            self.runs_dir = os.path.dirname(m02_Data_Files.d08_Predict_Data.d04_SDF.__file__)
+            self.run_dir = os.path.join(self.runs_dir, self.timestamp_run) 
+            samples_dict_path = os.path.join(os.path.dirname(m02_Data_Files.d08_Predict_Data.d04_SDF.__file__), f'samples_dict.npy')
 
         # Directories and paths
         self.train_cfg = train_cfg
-        self.timestamp_run = datetime.now().strftime('%d_%m_%H%M%S')   # timestamp to use for logging data
-        self.runs_dir = os.path.dirname(runs.__file__)               # directory fo all runs
-        self.run_dir = os.path.join(self.runs_dir, self.timestamp_run)  # directory for this run
+        self.timestamp_run = datetime.now().strftime('%d_%m_%H%M%S') 
+         # directory for this run
         os.makedirs(self.run_dir, exist_ok=True)
 
-        # Copy index files
-        Source_idx_str2int_path = os.path.join(os.path.dirname(m02_Data_Files.d04_SDF_Converted.__file__), 'idx_str2int_dict.npy')
-        Target_idx_str2int_path = os.path.join(self.run_dir, 'idx_str2int_dict.npy')
-        if os.path.exists(Source_idx_str2int_path):
-            idx_str2int_dict = np.load(Source_idx_str2int_path, allow_pickle=True).item()
-            np.save(Target_idx_str2int_path, idx_str2int_dict)
-            print(f'Saved idx_str2int_dict to {Target_idx_str2int_path}')
-        else:
-            print(f'Warning: {Source_idx_str2int_path} not found! idx_str2int_dict not saved.')
-
-        
-
         # Logging
-        self.writer = SummaryWriter(log_dir=self.run_dir)
+        self.writer = SummaryWriter(log_dir = self.run_dir)
         self.log_path = os.path.join(self.run_dir, 'settings.yaml')
         with open(self.log_path, 'w') as f:
             yaml.dump(self.train_cfg, f)
@@ -65,7 +65,7 @@ class Trainer():
         self.optimizer_model = optim.Adam(self.model.parameters(), lr=self.train_cfg['lr_model'], weight_decay=0)
 
         # Calculate num objects in samples_dictionary, wich is the number of keys
-        samples_dict_path = os.path.join(os.path.dirname(m02_Data_Files.d04_SDF_Converted.__file__), f'samples_dict.npy')
+        
         samples_dict = np.load(samples_dict_path, allow_pickle=True).item()
 
         # generate a unique random latent code for each shape
@@ -264,19 +264,40 @@ class Trainer():
 
         return avg_val_loss
 
-    def copy_training_idx_files(self):
-        Source_idx_int2str_path = os.path.join(os.path.dirname(m02_Data_Files.d04_SDF_Converted.__file__), 'idx_int2str_dict.npy')
-        Target_idx_int2str_path = os.path.join(self.run_dir, 'idx_int2str_dict.npy')
-        if os.path.exists(Source_idx_int2str_path):
-            idx_int2str_dict = np.load(Source_idx_int2str_path, allow_pickle=True).item()
-            np.save(Target_idx_int2str_path, idx_int2str_dict)
-            print(f'Saved idx_int2str_dict to {Target_idx_int2str_path}')
-        else:
-            print(f'Warning: {Source_idx_int2str_path} not found! idx_str2int_dict not saved.')
+def copy_training_idx_files(Source_idx_int2str_path, Target_idx_int2str_path):
+    if os.path.exists(Source_idx_int2str_path):
+        idx_int2str_dict = np.load(Source_idx_int2str_path, allow_pickle=True).item()
+        np.save(Target_idx_int2str_path, idx_int2str_dict)
+        print(f'Saved idx_int2str_dict to {Target_idx_int2str_path}')
+    else:
+        print(f'Warning: {Source_idx_int2str_path} not found! idx_str2int_dict not saved.')
 
 if __name__=='__main__':
-    train_cfg_path = os.path.join(os.path.dirname(m01_Config_Files.__file__), 'training.yaml')
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("mode", help="Mode of operation, train or pred", nargs='?', default="train")
+    args = parser.parse_args()
+
+    if args.mode == "train":
+        print("Extract for training data")
+        train_cfg_path = os.path.dirname(m01_Config_Files.__file__)
+        train_cfg_file = os.path.join(train_cfg_path, 'training.yaml')
+        Source_idx_int2str_path = os.path.join(os.path.dirname(m02_Data_Files.d04_SDF_Converted.__file__), 'idx_int2str_dict.npy')
+        Target_idx_int2str_path = os.path.join(runs, 'idx_int2str_dict.npy')
+        copy_training_idx_files(Source_idx_int2str_path, Target_idx_int2str_path) # Only copy in training
+    elif args.mode == "pred":
+        print("Extract for prediction data")
+        train_cfg_path = os.path.dirname(m02_Data_Files.d08_Predict_Data.d01_Config.__file__)
+        train_cfg_file = os.path.join(train_cfg_path, 'training.yaml')
+    else:
+        print("Incorrect mode, train or pred?")
+        sys.exit(1)
+
     with open(train_cfg_path, 'rb') as f:
         train_cfg = yaml.load(f, Loader=yaml.FullLoader)
-    trainer = Trainer(train_cfg)
-    trainer()   
+    Runner = SDF_Runner(train_cfg, args)
+
+    if args.mode == "train":
+        Runner()
+    elif args.mode == "pred":
+        Runner()
