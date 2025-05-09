@@ -18,10 +18,8 @@ from utils import utils_deepsdf
 
 import model_sdf as sdf_model
 import dataset_sdf as dataset
-import m01_Config_Files
 import m02_Data_Files.d04_SDF_Converted
 import m02_Data_Files.d05_SDF_Results.runs_sdf as runs
-import m02_Data_Files.d08_Predict_Data.d01_Config
 import m02_Data_Files.d08_Predict_Data.d04_SDF
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
@@ -45,6 +43,9 @@ class SDF_Runner():
         
         # directory for this run
         os.makedirs(self.run_dir, exist_ok=True)
+        Source_idx_int2str_path = os.path.join(os.path.dirname(m02_Data_Files.d04_SDF_Converted.__file__), 'idx_int2str_dict.npy')
+        Target_idx_int2str_path = os.path.join(self.run_dir, 'idx_int2str_dict.npy')
+        self.copy_training_idx_files(Source_idx_int2str_path, Target_idx_int2str_path)
         # directory to save new latent codes
         if args.mode == "pred":
             self.latent_dir = os.path.join(self.run_dir, 'latent')
@@ -145,13 +146,22 @@ class SDF_Runner():
             )
         return train_loader, val_loader
     
-    def train_latent_only(self):
-        train_loader, val_loader = self.get_pred_loaders()
+    def train_latent_only(self, data_folder_path):
+        train_loader, val_loader = self.get_pred_loaders(data_folder_path)
         self.results = {
             'best_latent_codes': []
         }
         best_loss = float('inf')
         start = time.time()
+        
+        # Load weight
+        pretrained_path = os.path.join(os.path.dirname(m02_Data_Files.d08_Predict_Data.d04_SDF.__file__), 'weights.pt')  # 自己调整路径
+        if os.path.exists(pretrained_path):
+            print(f"Loading pretrained model weights from {pretrained_path}")
+            self.model.load_state_dict(torch.load(pretrained_path, map_location='cpu'))
+        else:
+            raise FileNotFoundError
+
         # Freeze the SDF model parameters
         for param in self.model.parameters():
             param.requires_grad = False
@@ -178,8 +188,8 @@ class SDF_Runner():
         end = time.time()
         print(f'Time elapsed: {end - start:.2f} s')
 
-    def get_pred_loaders(self):
-        data = dataset.SDFDataset()
+    def get_pred_loaders(self, data_folder_path):
+        data = dataset.SDFDataset(data_folder_path)
         if self.train_cfg['clamp']:
             data.data['sdf'] = torch.clamp(data.data['sdf'], -self.train_cfg['clamp_value'], self.train_cfg['clamp_value'])
         train_size = int(0.7 * len(data))
@@ -277,3 +287,11 @@ class SDF_Runner():
         self.writer.add_scalar('Reconstruction loss', avg_loss_rec, self.epoch)
         self.writer.add_scalar('Latent code loss', avg_loss_latent, self.epoch)
         return avg_val_loss
+    
+    def copy_training_idx_files(self, Source_idx_int2str_path, Target_idx_int2str_path):
+        if os.path.exists(Source_idx_int2str_path):
+            idx_int2str_dict = np.load(Source_idx_int2str_path, allow_pickle=True).item()
+            np.save(Target_idx_int2str_path, idx_int2str_dict)
+            print(f'Saved idx_int2str_dict to {Target_idx_int2str_path}')
+        else:
+            print(f'Warning: {Source_idx_int2str_path} not found! idx_str2int_dict not saved.')

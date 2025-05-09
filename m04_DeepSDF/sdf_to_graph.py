@@ -116,11 +116,11 @@ def main():
     Target_sdf_folder_path = os.path.dirname(m02_Data_Files.d06_GCN_Training.d03_SDF_Latent_Codes.__file__)
     # Delete old files
     file_types=[".pt",".0",".npy",".yaml",".json"]
-    for type in file_types:
-        Delete_files(Target_graph_folder_path, type)
-        Delete_files(Target_configs_folder_path, type)
-        Delete_files(Target_sdf_folder_path, type)
-    print("Old files deleted")
+    #for type in file_types:
+        #Delete_files(Target_graph_folder_path, type)
+        #Delete_files(Target_configs_folder_path, type)
+        #Delete_files(Target_sdf_folder_path, type)
+    #print("Old files deleted")
 
     nearest_folder = find_nearest_folder(Source_sdf_results_folder_path)
     if nearest_folder:

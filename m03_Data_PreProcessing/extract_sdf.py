@@ -14,6 +14,7 @@ import m01_Config_Files
 import m02_Data_Files.d02_Object_Files
 import m02_Data_Files.d04_SDF_Converted
 import m02_Data_Files.d08_Predict_Data.d02_IFC.d02_obj
+import m02_Data_Files.d08_Predict_Data.d01_Config
 import m02_Data_Files.d08_Predict_Data.d04_SDF
 
 def Combine_sample_latent(samples, latent_class):

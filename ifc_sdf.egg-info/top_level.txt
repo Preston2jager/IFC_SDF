@@ -3,3 +3,4 @@ m02_Data_Files
 m03_Data_PreProcessing
 m04_DeepSDF
 m05_GCN
+m06_Prediction
